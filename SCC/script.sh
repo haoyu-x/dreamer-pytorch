@@ -5,7 +5,7 @@
 # Specify hard time limit for the job.
 #   The job will be aborted if it runs longer than this time.
 #   The default time is 12 hours
-#$ -l h_rt=24:00:00
+#$ -l h_rt=48:00:00
 
 # Send an email when the job finishes or if it is aborted (by default no email $
 #$ -m bea
@@ -52,6 +52,8 @@ echo "=========================================================="
 module load cuda/10.1
 module load python3/3.6.9
 module load pytorch/1.3
+
+pip install -r requirements.txt
 
 python3 main.py --log-dir "./logdir/dreamer/$taskinput" --cuda-idx 0 --game $taskinput
 
