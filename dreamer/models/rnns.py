@@ -3,6 +3,7 @@ import torch.distributions as td
 import torch.nn as nn
 import torch.nn.functional as tf
 from rlpyt.utils.collections import namedarraytuple
+from rlpyt.utils.buffer import buffer_method
 
 RSSMState = namedarraytuple('RSSMState', ['mean', 'std', 'stoch', 'deter'])
 
@@ -177,24 +178,32 @@ class RSSMRollout(RollOutModule):
             priors.append(state)
         return stack_states(priors, dim=0)
 
-    def rollout_policy(self, steps: int, policy, prev_action: torch.Tensor, prev_state: RSSMState):
+    def rollout_policy(self, steps: int, policy, prev_state: RSSMState):
         """
         Roll out the model with a policy function.
         :param steps: number of steps to roll out
         :param policy: RSSMState -> action
-        :param prev_action: size(batch_size, action_size)
         :param prev_state: RSSM state, size(batch_size, state_size)
-        :return: prior states size(time_steps, batch_size, state_size),
+        :return: next states size(time_steps, batch_size, state_size),
                  actions size(time_steps, batch_size, action_size)
         """
-        state, action = prev_state, prev_action
-        priors = []
+        state = prev_state
+        next_states = []
         actions = []
+
+        # freeze state transition model parameters as only action model gradients needed
+        for p in self.transition_model.parameters():
+            p.requires_grad = False
+
+        state = buffer_method(state, 'detach')
         for t in range(steps):
+            action, _ = policy(buffer_method(state, 'detach'))
             state = self.transition_model(action, state)
-            action, _ = policy(state)
-            priors.append(state)
+            next_states.append(state)
             actions.append(action)
-        priors = stack_states(priors, dim=0)
+        next_states = stack_states(next_states, dim=0)
         actions = torch.stack(actions, dim=0)
-        return priors, actions
+
+        for p in self.transition_model.parameters():
+            p.requires_grad = True
+        return next_states, actions
