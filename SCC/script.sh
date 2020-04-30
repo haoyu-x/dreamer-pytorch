@@ -31,14 +31,14 @@
 #$ -j y
 
 # Specify the output file name
-# -o example.qlog
+#$ -o dreamer-atari.qlog
 
 # Submit an array job with 3 tasks 
-# -t 1-3
+#$ -t 1-3
 
 # Use the SGE_TASK_ID environment variable to select the appropriate input file from bash array
 # Bash array index starts from 0, so we need to subtract one from SGE_TASK_ID value
-inputs=(pong alien assault)
+inputs=(bowling boxing krull)
 index=$(($SGE_TASK_ID-1))
 taskinput=${inputs[$index]}
 
@@ -53,7 +53,7 @@ module load cuda/10.1
 module load python3/3.6.9
 module load pytorch/1.3
 
-pip install -r requirements.txt
+logdir="./data/atari/$taskinput"
 
-python3 main.py --log-dir "./logdir/dreamer/$taskinput" --cuda-idx 0 --game $taskinput
+python3 main.py --log-dir $logdir --cuda-idx 0 --game $taskinput
 
