@@ -18,14 +18,15 @@ torch.autograd.set_detect_anomaly(True)  # used for debugging gradients
 loss_info_fields = ['model_loss', 'actor_loss', 'value_loss', 'prior_entropy', 'post_entropy', 'divergence',
                     'reward_loss', 'image_loss', 'pcont_loss']
 LossInfo = namedarraytuple('LossInfo', loss_info_fields)
-OptInfo = namedarraytuple("OptInfo", ['loss'] + loss_info_fields)
+OptInfo = namedarraytuple("OptInfo",
+                          ['loss', 'grad_norm_model', 'grad_norm_actor', 'grad_norm_value'] + loss_info_fields)
 
 
 class Dreamer(RlAlgorithm):
 
     def __init__(
             self,  # Hyper-parameters
-            batch_size=16,
+            batch_size=50,
             batch_length=50,
             train_every=1000,
             train_steps=100,
@@ -145,24 +146,33 @@ class Dreamer(RlAlgorithm):
             buffed_samples = buffer_to(samples_from_replay, self.agent.device)
             model_loss, actor_loss, value_loss, loss_info = self.loss(buffed_samples, itr, i)
 
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            torch.nn.utils.clip_grad_norm_(get_parameters(self.actor_modules), self.grad_clip)
-            self.actor_optimizer.step()
-
-            self.value_optimizer.zero_grad()
-            value_loss.backward()
-            torch.nn.utils.clip_grad_norm_(get_parameters(self.value_modules), self.grad_clip)
-            self.value_optimizer.step()
-
             self.model_optimizer.zero_grad()
+            self.actor_optimizer.zero_grad()
+            self.value_optimizer.zero_grad()
+
             model_loss.backward()
-            torch.nn.utils.clip_grad_norm_(get_parameters(self.model_modules), self.grad_clip)
+            actor_loss.backward()
+            value_loss.backward()
+
+            grad_norm_model = torch.nn.utils.clip_grad_norm_(get_parameters(self.model_modules), self.grad_clip)
+            grad_norm_actor = torch.nn.utils.clip_grad_norm_(get_parameters(self.actor_modules), self.grad_clip)
+            grad_norm_value = torch.nn.utils.clip_grad_norm_(get_parameters(self.value_modules), self.grad_clip)
+
             self.model_optimizer.step()
+            self.actor_optimizer.step()
+            self.value_optimizer.step()
 
             with torch.no_grad():
                 loss = model_loss + actor_loss + value_loss
             opt_info.loss.append(loss.item())
+            if isinstance(grad_norm_model, torch.Tensor):
+                opt_info.grad_norm_model.append(grad_norm_model.item())
+                opt_info.grad_norm_actor.append(grad_norm_actor.item())
+                opt_info.grad_norm_value.append(grad_norm_value.item())
+            else:
+                opt_info.grad_norm_model.append(grad_norm_model)
+                opt_info.grad_norm_actor.append(grad_norm_actor)
+                opt_info.grad_norm_value.append(grad_norm_value)
             for field in loss_info_fields:
                 if hasattr(opt_info, field):
                     getattr(opt_info, field).append(getattr(loss_info, field).item())
@@ -225,7 +235,7 @@ class Dreamer(RlAlgorithm):
         prior_dist = get_dist(prior)
         post_dist = get_dist(post)
         div = torch.mean(torch.distributions.kl.kl_divergence(post_dist, prior_dist))
-        div = torch.clamp(div, -float('inf'), self.free_nats)
+        div = torch.max(div, div.new_full(div.size(), self.free_nats))
         model_loss = self.kl_scale * div + reward_loss + image_loss
         if self.use_pcont:
             model_loss += self.pcont_scale * pcont_loss
