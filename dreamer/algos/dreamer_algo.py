@@ -193,8 +193,11 @@ class Dreamer(RlAlgorithm):
 
         observation = samples.all_observation[:-1]  # [t, t+batch_length+1] -> [t, t+batch_length]
         action = samples.all_action[1:]  # [t-1, t+batch_length] -> [t, t+batch_length]
+        
+        #env reward
         reward = samples.all_reward[1:]  # [t-1, t+batch_length] -> [t, t+batch_length]
         reward = reward.unsqueeze(2)
+        
         done = samples.done
         done = done.unsqueeze(2)
 
@@ -252,7 +255,8 @@ class Dreamer(RlAlgorithm):
         # Rollout the policy for self.horizon steps. Variable names with imag_ indicate this data is imagined not real.
         # imag_feat shape is [horizon, batch_t * batch_b, feature_size]
         with FreezeParameters(self.model_modules):
-            imag_dist, _ = model.rollout.rollout_policy(self.horizon, model.policy, flat_post)
+            #imaged_dist
+            imag_dist, _ = model.rollout.rollout_policy(self.horizon, model.policy, flat_post) #imagination
 
         # Use state features (deterministic and stochastic) to predict the image and reward
         imag_feat = get_feat(imag_dist)  # [horizon, batch_t * batch_b, feature_size]
